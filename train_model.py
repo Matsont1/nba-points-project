@@ -15,32 +15,29 @@ def build_feature_table():
     players = pd.read_csv("PlayerStatistics.csv", low_memory=False)
     games = pd.read_csv("Games(1).csv", low_memory=False)
     players["gameDateTimeEst"] = pd.to_datetime(players["gameDateTimeEst"], errors="coerce")
-    games["gameDateTimeEst"] = pd.to_datetime(games["gameDateTimeEst"], errors="coerce")
+    games["gameDateTimeEst"]   = pd.to_datetime(games["gameDateTimeEst"],   errors="coerce")
     players["PlayerName"] = players["firstName"] + " " + players["lastName"]
     players = players.sort_values(["PlayerName", "gameDateTimeEst"]).reset_index(drop=True)
-
     def last5_avg(points_series):
         return points_series.shift(1).rolling(5, min_periods=1).mean()
-        players["last5_avg_points"] = (players.groupby("PlayerName")["points"].transform(last5_avg))
-
+    players["last5_avg_points"] = players.groupby("PlayerName")["points"].transform(last5_avg)
     season_avg = (players.groupby("PlayerName", as_index=False)["points"].mean().rename(columns={"points": "season_avg_points"}))
-
     long_rows = []
     for _, row in games.iterrows():
         long_rows.append({"teamName": row["hometeamName"], "pointsAllowed": row["awayScore"]})
         long_rows.append({"teamName": row["awayteamName"], "pointsAllowed": row["homeScore"]})
-
     team_def = pd.DataFrame(long_rows)
-    team_def = (
-        team_def.groupby("teamName", as_index=False)["pointsAllowed"].mean().rename(columns={"pointsAllowed": "opp_avg_points_allowed"}))
-
+    team_def = (team_def.groupby("teamName", as_index=False)["pointsAllowed"].mean().rename(columns={"pointsAllowed": "opp_avg_points_allowed"}))
     df = players.merge(season_avg, on="PlayerName", how="left")
-    df = df.merge(team_def,left_on="opponentteamName",right_on="teamName",how="left",)
-
-    df = df.dropna(subset=["last5_avg_points","season_avg_points","opp_avg_points_allowed","points",])
-
+    df = df.merge(team_def, left_on="opponentteamName", right_on="teamName", how="left")
+    if "last5_avg_points" not in df.columns:
+        df = df.sort_values(["PlayerName", "gameDateTimeEst"]).reset_index(drop=True)
+        df["last5_avg_points"] = df.groupby("PlayerName")["points"].transform(last5_avg)
     feature_cols = ["last5_avg_points", "season_avg_points", "opp_avg_points_allowed"]
-    X = df[feature_cols]
+    existing_subcols = [c for c in (feature_cols + ["points"]) if c in df.columns]
+    df = df.dropna(subset=existing_subcols)
+    feature_cols_existing = [c for c in feature_cols if c in df.columns]
+    X = df[feature_cols_existing]
     y = df["points"]
     return X, y, team_def, season_avg
 
